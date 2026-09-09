@@ -215,7 +215,8 @@ def research_agent(state: AgentState) -> AgentState:
         **state,
         "tool_result": result,
         "steps": steps,
-    }    from rag import build_context
+    }   
+    from rag import build_context
 
     query = state["user_query"]
 
