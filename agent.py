@@ -223,8 +223,7 @@ def research_agent(state: AgentState) -> AgentState:
     context = build_context(query)
 
     steps = list(state.get("steps", []))
-    steps.append("RESEARCH SPECIALIST -> RAG RETRIEVER")
-
+    steps.append("RAG RETRIEVER -> CONTEXT RETURNED")
     return {
         **state,
         "tool_result": context,
