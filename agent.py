@@ -153,7 +153,7 @@ def supervisor(state: AgentState) -> AgentState:
     route = "calculator" if is_calculation else "research"
 
     steps = list(state.get("steps", []))
-    steps.append(f"SUPERVISOR -> {route.upper()} SPECIALIST")
+    steps.append(f"SUPERVISOR -> ROUTE: {route.upper()}")
 
     return {
         **state,
