@@ -186,7 +186,20 @@ def calculator_agent(state: AgentState) -> AgentState:
 # ============================================================
 
 def research_agent(state: AgentState) -> AgentState:
+    from rag import build_context
+
     query = state["user_query"]
+
+    context = build_context(query)
+
+    steps = list(state.get("steps", []))
+    steps.append("RESEARCH SPECIALIST -> RAG RETRIEVER")
+
+    return {
+        **state,
+        "tool_result": context,
+        "steps": steps,
+    }    query = state["user_query"]
 
     result = research_tool(query)
 
