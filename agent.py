@@ -1,10 +1,15 @@
+import ast
+import operator as op
+import sys
 from typing import TypedDict, Literal
+
 from langgraph.graph import StateGraph, START, END
 
 
-# -----------------------------
-# State
-# -----------------------------
+# ============================================================
+# STATE
+# ============================================================
+
 class AgentState(TypedDict, total=False):
     user_query: str
     route: str
@@ -13,52 +18,142 @@ class AgentState(TypedDict, total=False):
     steps: list[str]
 
 
-# -----------------------------
-# Tools
-# -----------------------------
-def calculator(expression: str) -> str:
-    """Safely evaluate simple arithmetic expressions."""
-    allowed = set("0123456789+-*/(). ")
-    if not all(char in allowed for char in expression):
-        return "Invalid expression."
+# ============================================================
+# SAFE CALCULATOR TOOL
+# ============================================================
+
+_ALLOWED_OPERATORS = {
+    ast.Add: op.add,
+    ast.Sub: op.sub,
+    ast.Mult: op.mul,
+    ast.Div: op.truediv,
+    ast.Mod: op.mod,
+    ast.Pow: op.pow,
+    ast.USub: op.neg,
+    ast.UAdd: op.pos,
+}
+
+
+def safe_calculate(expression: str):
+    """Safely evaluate basic arithmetic expressions."""
+    try:
+        tree = ast.parse(expression, mode="eval")
+    except SyntaxError:
+        raise ValueError("Invalid arithmetic expression.")
+
+    def evaluate(node):
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise ValueError("Only numbers are allowed.")
+
+        if isinstance(node, ast.BinOp):
+            operator = _ALLOWED_OPERATORS.get(type(node.op))
+            if operator is None:
+                raise ValueError("Operator not supported.")
+            return operator(evaluate(node.left), evaluate(node.right))
+
+        if isinstance(node, ast.UnaryOp):
+            operator = _ALLOWED_OPERATORS.get(type(node.op))
+            if operator is None:
+                raise ValueError("Operator not supported.")
+            return operator(evaluate(node.operand))
+
+        raise ValueError("Unsupported expression.")
+
+    return evaluate(tree.body)
+
+
+def calculator_tool(query: str) -> str:
+    """Extract and calculate an arithmetic expression."""
+    expression = query.strip()
+
+    prefixes = [
+        "calculate ",
+        "compute ",
+        "what is ",
+        "solve ",
+    ]
+
+    lowered = expression.lower()
+
+    for prefix in prefixes:
+        if lowered.startswith(prefix):
+            expression = expression[len(prefix):].strip()
+            break
 
     try:
-        result = eval(expression, {"__builtins__": {}}, {})
+        result = safe_calculate(expression)
         return str(result)
-    except Exception:
-        return "Could not calculate the expression."
+    except Exception as exc:
+        return f"Calculator error: {exc}"
 
+
+# ============================================================
+# RESEARCH TOOL
+# ============================================================
 
 def research_tool(query: str) -> str:
-    """Mock research tool for the MVP."""
-    knowledge = {
-        "rag": "RAG stands for Retrieval-Augmented Generation. It retrieves relevant information before generating an answer.",
-        "langgraph": "LangGraph is a framework for building stateful workflows and agent systems using graphs.",
-        "multi agent": "A multi-agent system uses multiple specialized agents that cooperate to solve a task."
+    """
+    Local research tool for the MVP.
+    Later this can be replaced with a real API or RAG retriever.
+    """
+    knowledge_base = {
+        "rag": (
+            "RAG means Retrieval-Augmented Generation. "
+            "It retrieves relevant information from external knowledge "
+            "before an LLM generates a grounded response."
+        ),
+        "langgraph": (
+            "LangGraph is a framework for building stateful, "
+            "graph-based agent workflows."
+        ),
+        "multi-agent": (
+            "A multi-agent system uses multiple specialized agents "
+            "that collaborate or are routed to solve different subtasks."
+        ),
+        "agent": (
+            "An AI agent can interpret a task, choose actions or tools, "
+            "execute them, observe results, and continue toward a goal."
+        ),
     }
 
     query_lower = query.lower()
 
-    for key, value in knowledge.items():
-        if key in query_lower:
-            return value
+    for keyword, answer in knowledge_base.items():
+        if keyword in query_lower:
+            return answer
 
-    return f"Research result for '{query}': No detailed local result found."
+    return (
+        f"No local research result found for: '{query}'. "
+        "The research tool is currently using a small local knowledge base."
+    )
 
 
-# -----------------------------
-# Supervisor
-# -----------------------------
+# ============================================================
+# SUPERVISOR AGENT
+# ============================================================
+
 def supervisor(state: AgentState) -> AgentState:
     query = state["user_query"].lower()
 
-    if any(word in query for word in ["calculate", "compute", "+", "-", "*", "/"]):
-        route = "calculator"
-    else:
-        route = "research"
+    calculation_words = [
+        "calculate",
+        "compute",
+        "solve",
+    ]
 
-    steps = state.get("steps", [])
-    steps.append(f"Supervisor routed task to: {route}")
+    arithmetic_symbols = ["+", "-", "*", "/", "%"]
+
+    is_calculation = (
+        any(word in query for word in calculation_words)
+        or any(symbol in query for symbol in arithmetic_symbols)
+    )
+
+    route = "calculator" if is_calculation else "research"
+
+    steps = list(state.get("steps", []))
+    steps.append(f"SUPERVISOR -> {route.upper()} SPECIALIST")
 
     return {
         **state,
@@ -67,26 +162,17 @@ def supervisor(state: AgentState) -> AgentState:
     }
 
 
-# -----------------------------
-# Calculator Agent
-# -----------------------------
+# ============================================================
+# CALCULATOR SPECIALIST
+# ============================================================
+
 def calculator_agent(state: AgentState) -> AgentState:
     query = state["user_query"]
 
-    # Extract a simple arithmetic expression from the request.
-    expression = query.lower()
+    result = calculator_tool(query)
 
-    for prefix in [
-        "calculate ",
-        "compute ",
-        "what is ",
-    ]:
-        expression = expression.replace(prefix, "")
-
-    result = calculator(expression)
-
-    steps = state.get("steps", [])
-    steps.append(f"Calculator executed: {expression}")
+    steps = list(state.get("steps", []))
+    steps.append("CALCULATOR SPECIALIST -> calculator_tool")
 
     return {
         **state,
@@ -95,16 +181,17 @@ def calculator_agent(state: AgentState) -> AgentState:
     }
 
 
-# -----------------------------
-# Research Agent
-# -----------------------------
+# ============================================================
+# RESEARCH SPECIALIST
+# ============================================================
+
 def research_agent(state: AgentState) -> AgentState:
     query = state["user_query"]
 
     result = research_tool(query)
 
-    steps = state.get("steps", [])
-    steps.append("Research tool executed")
+    steps = list(state.get("steps", []))
+    steps.append("RESEARCH SPECIALIST -> research_tool")
 
     return {
         **state,
@@ -113,39 +200,41 @@ def research_agent(state: AgentState) -> AgentState:
     }
 
 
-# -----------------------------
-# Finalizer
-# -----------------------------
+# ============================================================
+# FINALIZER
+# ============================================================
+
 def finalizer(state: AgentState) -> AgentState:
     result = state.get("tool_result", "No result available.")
 
-    answer = f"Final Answer: {result}"
-
-    steps = state.get("steps", [])
-    steps.append("Finalizer generated response")
+    steps = list(state.get("steps", []))
+    steps.append("FINALIZER -> final response")
 
     return {
         **state,
-        "final_answer": answer,
+        "final_answer": result,
         "steps": steps,
     }
 
 
-# -----------------------------
-# Conditional Routing
-# -----------------------------
+# ============================================================
+# CONDITIONAL ROUTING
+# ============================================================
+
 def route_to_specialist(
     state: AgentState,
 ) -> Literal["calculator_agent", "research_agent"]:
+
     if state["route"] == "calculator":
         return "calculator_agent"
 
     return "research_agent"
 
 
-# -----------------------------
-# Build Graph
-# -----------------------------
+# ============================================================
+# BUILD LANGGRAPH
+# ============================================================
+
 workflow = StateGraph(AgentState)
 
 workflow.add_node("supervisor", supervisor)
@@ -168,29 +257,38 @@ workflow.add_edge("finalizer", END)
 graph = workflow.compile()
 
 
-# -----------------------------
-# Run
-# -----------------------------
+# ============================================================
+# RUN AGENT
+# ============================================================
+
 def run_agent(query: str) -> AgentState:
-    result = graph.invoke(
+    return graph.invoke(
         {
             "user_query": query,
             "steps": [],
         }
     )
 
-    return result
 
+# ============================================================
+# MAIN
+# ============================================================
 
 if __name__ == "__main__":
-    print("\n=== Multi-Agent Task Automation ===\n")
 
-    query = input("Enter your task: ")
+    if len(sys.argv) > 1:
+        user_query = " ".join(sys.argv[1:])
+    else:
+        user_query = input("Enter your task: ").strip()
 
-    result = run_agent(query)
+    result = run_agent(user_query)
 
-    print("\nExecution Steps:")
-    for step in result["steps"]:
-        print(f"- {step}")
+    print("\nUSER:")
+    print(user_query)
 
-    print("\n" + result["final_answer"])
+    print("\nAGENT:")
+    print("Agent trace:")
+    print(" -> ".join(result["steps"]))
+
+    print("\nFINAL ANSWER:")
+    print(result["final_answer"])
