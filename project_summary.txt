@@ -1,0 +1,18 @@
+PROJECT: Multi-Agent Task Automation (LangGraph)
+STATUS: MVP completed and offline-tested
+
+Architecture:
+User -> Supervisor Agent -> Research Specialist OR Calculation Specialist -> Finalizer Agent
+
+Implemented:
+- LangGraph StateGraph
+- Shared state
+- Conditional routing
+- Specialized agent responsibilities
+- Research knowledge retrieval
+- Safe arithmetic calculation utility
+- Deterministic offline mock mode
+- Step tracking
+
+Resume statement:
+Built a multi-agent task automation system using LangGraph with a supervisor agent that routes tasks to specialized research and calculation agents, followed by a finalization step. Implemented shared state and conditional routing to demonstrate action-oriented agent workflows rather than single prompt-response generation.
