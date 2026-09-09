@@ -154,7 +154,6 @@ def supervisor(state: AgentState) -> AgentState:
 
     steps = list(state.get("steps", []))
     steps.append(f"SUPERVISOR -> ROUTE: {route.upper()}")
-
     return {
         **state,
         "route": route,
@@ -224,6 +223,7 @@ def research_agent(state: AgentState) -> AgentState:
 
     steps = list(state.get("steps", []))
     steps.append("RAG RETRIEVER -> CONTEXT RETURNED")
+
     return {
         **state,
         "tool_result": context,
