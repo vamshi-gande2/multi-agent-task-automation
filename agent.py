@@ -228,7 +228,9 @@ def research_agent(state: AgentState) -> AgentState:
         **state,
         "tool_result": context,
         "steps": steps,
-    }    query = state["user_query"]
+    }    
+
+    query = state["user_query"]
 
     result = research_tool(query)
 
