@@ -186,7 +186,36 @@ def calculator_agent(state: AgentState) -> AgentState:
 # ============================================================
 
 def research_agent(state: AgentState) -> AgentState:
-    from rag import build_context
+    import requests
+
+    query = state["user_query"]
+
+    try:
+        response = requests.get(
+            "https://en.wikipedia.org/api/rest_v1/page/summary/"
+            + query.replace(" ", "_"),
+            timeout=10,
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            result = data.get("extract", "No result found.")
+        else:
+            from rag import build_context
+            result = build_context(query)
+
+    except requests.RequestException:
+        from rag import build_context
+        result = build_context(query)
+
+    steps = list(state.get("steps", []))
+    steps.append("RESEARCH SPECIALIST -> EXTERNAL API / RAG FALLBACK")
+
+    return {
+        **state,
+        "tool_result": result,
+        "steps": steps,
+    }    from rag import build_context
 
     query = state["user_query"]
 
